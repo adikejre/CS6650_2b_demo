@@ -14,7 +14,7 @@ terraform {
 
 # Configure AWS credentials & region
 provider "aws" {
-  region     = var.aws_region
+  region = var.aws_region
 }
 
 # Fetch an ECR auth token so Terraform's Docker provider can log in

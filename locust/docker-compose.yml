@@ -1,0 +1,42 @@
+# Distributed Locust (1 master + N workers).
+#
+#   Against the deployed ECS task:
+#     TARGET_HOST=http://<PUBLIC-IP>:8080 docker compose up --scale worker=4
+#   Against the local observability stack (default):
+#     docker compose up --scale worker=4
+#
+# Choose the experiment with env vars:
+#   LOCUST_FILE=locustfile.py | stress.py
+#   USER_CLASS=ProductHttpUser | ProductFastHttpUser
+#   WAIT=none  (zero think time, for stress tests)
+#
+# Web UI: http://localhost:8089
+x-locust-env: &locust-env
+  SEED_PRODUCTS: ${SEED_PRODUCTS:-1000}
+  WAIT: ${WAIT:-}
+  STEP_USERS: ${STEP_USERS:-50}
+  STEP_SECONDS: ${STEP_SECONDS:-60}
+  MAX_USERS: ${MAX_USERS:-1000}
+
+services:
+  master:
+    image: locustio/locust:2.37.10
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./:/mnt/locust
+    environment: *locust-env
+    command: >
+      -f /mnt/locust/${LOCUST_FILE:-locustfile.py} ${USER_CLASS:-ProductHttpUser}
+      --master -H ${TARGET_HOST:-http://host.docker.internal:8080}
+
+  worker:
+    image: locustio/locust:2.37.10
+    volumes:
+      - ./:/mnt/locust
+    environment: *locust-env
+    command: >
+      -f /mnt/locust/${LOCUST_FILE:-locustfile.py} ${USER_CLASS:-ProductHttpUser}
+      --worker --master-host master
+    depends_on:
+      - master

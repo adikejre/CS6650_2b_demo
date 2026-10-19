@@ -23,9 +23,11 @@ data "aws_iam_role" "lab_role" {
 }
 
 module "ecs" {
-  source             = "./modules/ecs"
-  service_name       = var.service_name
-  image              = "${module.ecr.repository_url}:latest"
+  source       = "./modules/ecs"
+  service_name = var.service_name
+  # Pin to the digest just pushed, so a code change produces a new task
+  # definition and ECS rolls out the new image (":latest" alone would not).
+  image              = "${module.ecr.repository_url}@${docker_registry_image.app.sha256_digest}"
   container_port     = var.container_port
   subnet_ids         = module.network.subnet_ids
   security_group_ids = [module.network.security_group_id]
@@ -38,18 +40,34 @@ module "ecs" {
 
 
 // Build & push the Go app image into ECR
-resource "docker_image" "app" {
+locals {
   # Use the URL from the ecr module, and tag it "latest"
-  name = "${module.ecr.repository_url}:latest"
+  image_name = "${module.ecr.repository_url}:latest"
+  # Changes whenever any file in src/ changes
+  src_hash = sha1(join("", [for f in sort(fileset("${path.module}/../src", "**")) : filesha1("${path.module}/../src/${f}")]))
+}
 
-  build {
-    # relative path from terraform/ → src/
-    context = "../src"
-    # Dockerfile defaults to "Dockerfile" in that context
+# Build with the docker CLI rather than the provider's docker_image build:
+# the provider's legacy build API sends a corrupted build context to
+# Docker Engine 29+ ("failed to read dockerfile: unexpected EOF").
+resource "terraform_data" "app_image" {
+  triggers_replace = [local.src_hash, local.image_name]
+
+  provisioner "local-exec" {
+    # Fargate runs x86_64; --platform keeps builds on Apple Silicon compatible.
+    # Single command so it runs the same under cmd.exe, PowerShell and sh.
+    command     = "docker build --platform linux/amd64 -t ${local.image_name} ../src"
+    working_dir = path.module
   }
 }
 
 resource "docker_registry_image" "app" {
-  # this will push :latest → ECR
-  name = docker_image.app.name
+  # this will push :latest → ECR (auth comes from provider.tf)
+  name       = local.image_name
+  depends_on = [terraform_data.app_image]
+
+  # Re-push whenever the source (and so the image) changes
+  triggers = {
+    src_hash = local.src_hash
+  }
 }

@@ -1,0 +1,43 @@
+# Local observability stack for Part V (not deployed to AWS).
+#   docker compose up --build -d
+#   App:        http://localhost:8080   (metrics at /metrics)
+#   Prometheus: http://localhost:9090
+#   Grafana:    http://localhost:3000   (anonymous admin; dashboard "Product API - RED")
+services:
+  product-service:
+    build: ../src
+    ports:
+      - "8080:8080"
+    environment:
+      - ENABLE_FAULT_INJECTION=true
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+    # CPU-limit the container to roughly match a 0.25 vCPU Fargate task,
+    # so local stress results resemble the deployed behaviour.
+    cpus: 0.25
+    mem_limit: 512m
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - product-service
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus

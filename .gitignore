@@ -1,4 +1,26 @@
+# Terraform state, plans, local provider cache and secrets
 **.tfvars
 **.tfstate
 **.tfstate.*
 **/.terraform/
+*.tfplan
+crash.log
+
+# Secrets
+.env
+*.pem
+*.key
+
+# Go build output
+src/product-service
+*.exe
+*.test
+*.out
+
+# Python
+__pycache__/
+*.pyc
+
+# Locust CSV / HTML reports (keep the screenshots instead)
+locust/*.csv
+locust/*.html
